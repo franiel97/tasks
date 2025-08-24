@@ -26,28 +26,36 @@
         </div>
     </section>
 
-    <!-- Header -->
+    <!-- Header (escondido até login) -->
     <header id="header" style="display: none;">
-        <h1>Plataforma de Tarefas</h1>
-        <div id="theme-selector">
-            <label>Tema:</label>
-            <select id="theme-select" onchange="changeTheme(this.value)">
-                <option value="ios">iOS 26 Liquid Glass</option>
-                <option value="android">Android 16</option>
-                <option value="web">Web Rounded</option>
-            </select>
-            <label>Cor (Android/Web):</label>
-            <input type="color" id="primary-color" onchange="changePrimaryColor(this.value)" value="#007bff">
-            <label>Dark Mode:</label>
-            <input type="checkbox" id="dark-mode" onchange="toggleDarkMode(this.checked)">
+        <!-- Menu Hambúrguer -->
+        <button id="menu-btn" onclick="toggleMenu()"><i class="fas fa-bars"></i></button>
+        <div id="sidebar-menu" style="display: none;">
+            <h2>Configurações</h2>
+            <div id="theme-selector">
+                <label>Tema:</label>
+                <select id="theme-select" onchange="changeTheme(this.value)">
+                    <option value="ios">iOS 26 Liquid Glass</option>
+                    <option value="android">Android 16</option>
+                    <option value="web">Web Rounded</option>
+                </select>
+                <div id="color-selector">
+                    <label>Cor Principal (Android/Web):</label>
+                    <input type="color" id="primary-color" onchange="changePrimaryColor(this.value)">
+                </div>
+                <label>Dark Mode:</label>
+                <input type="checkbox" id="dark-mode" onchange="toggleDarkMode(this.checked)">
+            </div>
         </div>
+        <h1>Plataforma de Tarefas</h1>
         <div id="top-right-buttons">
-            <button id="admin-btn" style="display: none;" onclick="switchToAdmin()"><i class="fas fa-cog"></i><span>Admin</span></button>
+            <button id="admin-btn" style="display: none;" onclick="switchToAdmin()"><i class="fas fa-cog"></i> <span>Admin</span></button>
             <div class="notifications-dropdown">
-                <button id="notifications-btn" onclick="toggleNotifications()"><i class="fas fa-bell"></i><span>Notificações</span></button>
+                <button id="notifications-btn" onclick="toggleNotifications()"><i class="fas fa-bell"></i> <span>Notificações</span></button>
                 <div id="notifications-list" class="dropdown-content" style="display: none;"></div>
             </div>
-            <button id="logout-btn" onclick="logout()"><i class="fas fa-sign-out-alt"></i><span>Sair</span></button>
+            <button id="logout-btn" onclick="logout()"><i class="fas fa-sign-out-alt"></i> <span>Sair</span></button>
+            <div id="points-display"><i class="fas fa-coins"></i> <span id="current-points">0</span></div>
         </div>
         <nav id="main-nav"></nav>
     </header>
@@ -62,7 +70,6 @@
     <section id="admin-section" style="display: none;">
         <div id="admin-tabs"></div>
         <div id="admin-content"></div>
-        <button onclick="switchToUser()">Visão Usuário</button>
     </section>
 
     <!-- Modals -->
@@ -90,6 +97,7 @@
         </div>
     </div>
 
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
     <script src="script.js"></script>
 </body>
 </html>
