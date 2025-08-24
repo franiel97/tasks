@@ -1,0 +1,16 @@
+{
+  "users": [
+    {
+      "id": 1,
+      "username": "admin",
+      "passwordHash": "2bb80d537b1da3e38bd30361aa855686bde0eacd7162fef6a25fe97bf527a25b",
+      "type": "admin",
+      "totalPoints": 0,
+      "currentPoints": 0
+    }
+  ],
+  "tasks": [],
+  "products": [],
+  "requests": [],
+  "notifications": []
+}

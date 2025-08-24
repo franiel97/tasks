@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Plataforma de Tarefas</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body data-theme="web" data-dark="false" data-primary-color="#007bff">
+    <!-- Login -->
+    <section id="login-section">
+        <div class="login-container">
+            <h1>Plataforma de Tarefas</h1>
+            <form id="login-form">
+                <div class="form-group">
+                    <label for="username">Usuário</label>
+                    <input type="text" id="username" required placeholder="Digite seu usuário">
+                </div>
+                <div class="form-group">
+                    <label for="password">Senha</label>
+                    <input type="password" id="password" required placeholder="Digite sua senha">
+                </div>
+                <button type="submit">Entrar</button>
+            </form>
+        </div>
+    </section>
+
+    <!-- Header -->
+    <header id="header" style="display: none;">
+        <h1>Plataforma de Tarefas</h1>
+        <div id="theme-selector">
+            <label>Tema:</label>
+            <select id="theme-select" onchange="changeTheme(this.value)">
+                <option value="ios">iOS 26 Liquid Glass</option>
+                <option value="android">Android 16</option>
+                <option value="web">Web Rounded</option>
+            </select>
+            <label>Cor (Android/Web):</label>
+            <input type="color" id="primary-color" onchange="changePrimaryColor(this.value)" value="#007bff">
+            <label>Dark Mode:</label>
+            <input type="checkbox" id="dark-mode" onchange="toggleDarkMode(this.checked)">
+        </div>
+        <div id="top-right-buttons">
+            <button id="admin-btn" style="display: none;" onclick="switchToAdmin()"><i class="fas fa-cog"></i><span>Admin</span></button>
+            <div class="notifications-dropdown">
+                <button id="notifications-btn" onclick="toggleNotifications()"><i class="fas fa-bell"></i><span>Notificações</span></button>
+                <div id="notifications-list" class="dropdown-content" style="display: none;"></div>
+            </div>
+            <button id="logout-btn" onclick="logout()"><i class="fas fa-sign-out-alt"></i><span>Sair</span></button>
+        </div>
+        <nav id="main-nav"></nav>
+    </header>
+
+    <!-- Usuário Comum -->
+    <section id="user-section" style="display: none;">
+        <div id="user-tabs"></div>
+        <div id="user-content"></div>
+    </section>
+
+    <!-- Admin -->
+    <section id="admin-section" style="display: none;">
+        <div id="admin-tabs"></div>
+        <div id="admin-content"></div>
+        <button onclick="switchToUser()">Visão Usuário</button>
+    </section>
+
+    <!-- Modals -->
+    <div id="modal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <span class="close" onclick="closeModal()">&times;</span>
+            <p id="modal-message"></p>
+            <button id="modal-confirm">Confirmar</button>
+            <button onclick="closeModal()">Cancelar</button>
+        </div>
+    </div>
+    <div id="justify-modal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <span class="close" onclick="closeJustifyModal()">&times;</span>
+            <p>Justificativa:</p>
+            <textarea id="justify-text" required></textarea>
+            <button onclick="confirmRejection()">Enviar</button>
+        </div>
+    </div>
+    <div id="edit-modal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <span class="close" onclick="closeEditModal()">&times;</span>
+            <div id="edit-form"></div>
+            <button onclick="saveEdit()">Salvar</button>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
