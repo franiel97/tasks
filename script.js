@@ -3,10 +3,10 @@ let currentUser = null;
 let rejectionId = null;
 let editId = null;
 let editType = null;
-const DB_URL = 'https://seuusuario.github.io/repo/data.json'; // Ajuste para seu repo
-const GH_TOKEN = ''; // Adicione seu PAT (não commit!)
-const REPO_OWNER = 'seuusuario';
-const REPO_NAME = 'repo';
+const DB_URL = 'https://franiel97.github.io/tasks/data.json'; // Ajuste para seu repo
+//const GH_TOKEN = ''; // Adicione seu PAT (não commit!)
+const REPO_OWNER = 'franiel97';
+const REPO_NAME = 'tasks';
 const FILE_PATH = 'data.json';
 
 async function hashPassword(password) {
