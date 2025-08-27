@@ -2,7 +2,7 @@ let data = {};
 let currentUser = null;
 let rejectionId = null;
 let editId = null;
-let editType = '';
+let editType = null;
 const DB_URL = 'https://seuusuario.github.io/repo/data.json'; // Ajuste para seu repo
 const GH_TOKEN = ''; // Adicione seu PAT (não commit!)
 const REPO_OWNER = 'seuusuario';
@@ -26,22 +26,68 @@ async function fetchData() {
         const res = await fetch(DB_URL);
         if (!res.ok) throw new Error('Fetch failed');
         data = await res.json();
+        localStorage.setItem('data', JSON.stringify(data)); // Salva no localStorage
     } catch (e) {
         console.error('Erro ao carregar DB:', e);
         data = JSON.parse(localStorage.getItem('data') || '{}');
+        data.notifications = data.notifications || [];
+        data.notifications.push({
+            id: (data.notifications.length || 0) + 1,
+            userId: currentUser ? currentUser.id : null,
+            message: 'Falha ao sincronizar com o servidor. Usando dados locais.',
+            read: false,
+            createdAt: new Date().toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' })
+        });
+        await saveData();
     }
 }
 
 async function saveData() {
     localStorage.setItem('data', JSON.stringify(data));
+    if (GH_TOKEN) {
+        try {
+            const content = btoa(JSON.stringify(data, null, 2));
+            const sha = await getFileSha();
+            const res = await fetch(`https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${FILE_PATH}`, {
+                method: 'PUT',
+                headers: {
+                    'Authorization': `token ${GH_TOKEN}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    message: `Update data.json at ${new Date().toISOString()}`,
+                    content: content,
+                    sha: sha
+                })
+            });
+            if (!res.ok) throw new Error('Failed to update GitHub');
+        } catch (e) {
+            console.error('Erro ao salvar no GitHub:', e);
+            data.notifications.push({
+                id: data.notifications.length + 1,
+                userId: currentUser ? currentUser.id : null,
+                message: 'Falha ao salvar no servidor. Dados salvos localmente.',
+                read: false,
+                createdAt: new Date().toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' })
+            });
+            localStorage.setItem('data', JSON.stringify(data));
+            if (currentUser) renderNotificationsDropdown();
+        }
+    }
 }
 
 async function getFileSha() {
-    const res = await fetch(`https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${FILE_PATH}`, {
-        headers: { 'Authorization': `token ${GH_TOKEN}` }
-    });
-    const json = await res.json();
-    return json.sha;
+    try {
+        const res = await fetch(`https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${FILE_PATH}`, {
+            headers: { 'Authorization': `token ${GH_TOKEN}` }
+        });
+        if (res.status === 404) return null; // Arquivo não existe
+        const json = await res.json();
+        return json.sha;
+    } catch (e) {
+        console.error('Erro ao obter SHA:', e);
+        return null;
+    }
 }
 
 function checkSession() {
@@ -88,9 +134,13 @@ function renderNotificationsDropdown() {
     userNotifs.forEach(notif => {
         const li = document.createElement('li');
         li.textContent = notif.message;
+        if (!notif.read) li.classList.add('unread');
         li.onclick = () => {
+            notif.read = true;
             showUserTab(notif.link);
             toggleNotifications();
+            updateUnreadCount();
+            saveData();
         };
         ul.appendChild(li);
     });
@@ -98,6 +148,14 @@ function renderNotificationsDropdown() {
         ul.innerHTML = '<li>Nenhuma notificação.</li>';
     }
     list.appendChild(ul);
+    updateUnreadCount();
+}
+
+function updateUnreadCount() {
+    const unreadCount = data.notifications.filter(n => n.userId === currentUser.id && !n.read).length;
+    const unreadBadge = document.getElementById('unread-count');
+    unreadBadge.textContent = unreadCount;
+    unreadBadge.style.display = unreadCount > 0 ? 'inline' : 'none';
 }
 
 function changeTheme(theme) {
@@ -108,10 +166,12 @@ function changeTheme(theme) {
     document.body.style.setProperty('--primary-color', defaultColor);
     document.getElementById('primary-color').value = defaultColor;
     localStorage.setItem('primaryColor', defaultColor);
+    document.documentElement.style.setProperty('--primary', defaultColor);
 }
 
 function changePrimaryColor(color) {
     document.body.style.setProperty('--primary-color', color);
+    document.documentElement.style.setProperty('--primary', color);
     localStorage.setItem('primaryColor', color);
 }
 
@@ -159,6 +219,15 @@ function toggleDarkMode(enabled) {
     toggleDarkMode(savedDark);
     document.getElementById('dark-mode').checked = savedDark;
     document.getElementById('color-selector').style.display = savedTheme === 'ios' ? 'none' : 'block';
+
+    // Fechar notificações ao clicar fora
+    document.addEventListener('click', (e) => {
+        const dropdown = document.getElementById('notifications-list');
+        const btn = document.getElementById('notifications-btn');
+        if (dropdown.style.display === 'block' && !dropdown.contains(e.target) && !btn.contains(e.target)) {
+            dropdown.style.display = 'none';
+        }
+    });
 })();
 
 // Login
@@ -181,7 +250,15 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
         updatePointsDisplay();
         switchToUser();
     } else {
-        alert('Usuário ou senha inválidos.');
+        data.notifications.push({
+            id: data.notifications.length + 1,
+            userId: null,
+            message: 'Usuário ou senha inválidos.',
+            read: false,
+            createdAt: new Date().toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' })
+        });
+        await saveData();
+        renderNotificationsDropdown();
     }
 });
 
@@ -223,7 +300,8 @@ function renderUserTabs() {
         { label: 'Tarefas', icon: 'fa-list', tab: 'tasks' },
         { label: 'Produtos', icon: 'fa-shopping-bag', tab: 'products' },
         { label: 'Solicitados', icon: 'fa-box', tab: 'requested-products' },
-        { label: 'Ranking', icon: 'fa-trophy', tab: 'ranking' }
+        { label: 'Ranking', icon: 'fa-trophy', tab: 'ranking' },
+        { label: 'Tarefas Concluídas', icon: 'fa-check-circle', tab: 'completed-tasks' }
     ];
     tabData.forEach(data => {
         const btn = document.createElement('button');
@@ -269,6 +347,9 @@ async function showUserTab(tab) {
         case 'ranking':
             renderUserRanking(content);
             break;
+        case 'completed-tasks':
+            renderCompletedTasks(content);
+            break;
     }
 }
 
@@ -294,6 +375,7 @@ function renderTasks(content) {
             block.innerHTML = `<p>${task.name} - ${task.points} pontos</p>`;
             const btn = document.createElement('button');
             btn.textContent = 'Concluída';
+            btn.classList.add('complete-btn');
             btn.onclick = () => completeTask(task.id);
             block.appendChild(btn);
             dayDiv.appendChild(block);
@@ -308,27 +390,54 @@ async function completeTask(taskId) {
     const task = data.tasks.find(t => t.id === taskId);
     if (task && task.userId === currentUser.id) {
         task.completed = true;
+        task.completedAt = new Date().toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' });
         currentUser.totalPoints += task.points;
         currentUser.currentPoints += task.points;
+        data.notifications.push({
+            id: data.notifications.length + 1,
+            userId: currentUser.id,
+            message: `Tarefa "${task.name}" concluída! +${task.points} pontos.`,
+            link: 'completed-tasks',
+            read: false,
+            createdAt: new Date().toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' })
+        });
         await saveData();
         updatePointsDisplay();
+        renderNotificationsDropdown();
         showUserTab('tasks');
     }
 }
 
+function renderCompletedTasks(content) {
+    content.innerHTML = '';
+    const table = document.createElement('table');
+    table.innerHTML = '<tr><th>Tarefa</th><th>Pontos</th><th>Concluída em</th></tr>';
+    const completedTasks = data.tasks.filter(t => t.userId === currentUser.id && t.completed);
+    completedTasks.forEach(task => {
+        table.innerHTML += `<tr><td>${task.name}</td><td>${task.points}</td><td>${task.completedAt}</td></tr>`;
+    });
+    content.appendChild(table);
+}
+
 function renderProducts(content) {
     content.innerHTML = '';
-    const list = document.createElement('ul');
+    const table = document.createElement('table');
+    table.innerHTML = '<tr><th>Produto</th><th>Pontos</th><th>Ação</th></tr>';
     data.products.forEach(product => {
-        const li = document.createElement('li');
-        li.innerHTML = `${product.name} - ${product.points} pontos`;
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td>${product.name}</td><td>${product.points}</td>`;
+        const td = document.createElement('td');
         const btn = document.createElement('button');
         btn.textContent = 'Resgatar';
-        btn.onclick = () => showModal(`Trocar ${product.points} pontos por ${product.name}?`, () => requestProduct(product.id));
-        li.appendChild(btn);
-        list.appendChild(li);
+        btn.onclick = () => showModal(`Trocar ${product.points} pontos por ${product.name}?`, () => {
+            requestProduct(product.id);
+            closeModal();
+        });
+        td.appendChild(btn);
+        tr.appendChild(td);
+        table.appendChild(tr);
     });
-    content.appendChild(list);
+    content.appendChild(table);
 }
 
 async function requestProduct(productId) {
@@ -349,31 +458,80 @@ async function requestProduct(productId) {
             userId: currentUser.id,
             message: `Solicitação de ${product.name} aguardando avaliação.`,
             link: 'requested-products',
+            read: false,
             createdAt: new Date().toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' })
         });
         await saveData();
         renderNotificationsDropdown();
-        alert('Solicitação enviada!');
         showUserTab('products');
     } else {
-        alert('Pontos insuficientes!');
+        data.notifications.push({
+            id: data.notifications.length + 1,
+            userId: currentUser.id,
+            message: 'Pontos insuficientes para resgatar ' + product.name + '.',
+            link: 'products',
+            read: false,
+            createdAt: new Date().toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' })
+        });
+        await saveData();
+        renderNotificationsDropdown();
     }
 }
 
 function renderRequestedProducts(content) {
     content.innerHTML = '';
-    const list = document.createElement('ul');
+    const table = document.createElement('table');
+    table.innerHTML = '<tr><th>Produto</th><th>Status</th><th>Criado</th><th>Moderado</th><th>Justificativa</th><th>Ação</th></tr>';
     const userRequests = data.requests.filter(r => r.userId === currentUser.id);
     userRequests.forEach(req => {
         const product = data.products.find(p => p.id === req.productId);
-        const li = document.createElement('li');
+        const tr = document.createElement('tr');
         let iconClass = req.status === 'Aguardando Avaliação' ? 'fa-clock' : req.status === 'Aprovado' ? 'fa-check' : 'fa-times';
-        li.innerHTML = `<i class="fas ${iconClass} request-item"></i> ${product.name} - Status: ${req.status} - Criado: ${req.createdAt}`;
-        if (req.status === 'Rejeitado') li.innerHTML += `<br>Justificativa: ${req.justification}`;
-        if (req.moderatedAt) li.innerHTML += `<br>Moderado: ${req.moderatedAt}`;
-        list.appendChild(li);
+        tr.innerHTML = `
+            <td><i class="fas ${iconClass} request-item"></i> ${product.name}</td>
+            <td>${req.status}</td>
+            <td>${req.createdAt}</td>
+            <td>${req.moderatedAt || '-'}</td>
+            <td>${req.justification || '-'}</td>
+        `;
+        const td = document.createElement('td');
+        if (req.status === 'Aguardando Avaliação') {
+            const cancelBtn = document.createElement('button');
+            cancelBtn.textContent = 'Cancelar';
+            cancelBtn.classList.add('delete-btn');
+            cancelBtn.onclick = () => showModal(`Cancelar solicitação de ${product.name}? Receberá ${Math.floor(product.points / 2)} pontos de volta.`, () => {
+                cancelRequest(req.id);
+                closeModal();
+            });
+            td.appendChild(cancelBtn);
+        }
+        tr.appendChild(td);
+        table.appendChild(tr);
     });
-    content.appendChild(list);
+    content.appendChild(table);
+}
+
+async function cancelRequest(requestId) {
+    await fetchData();
+    const req = data.requests.find(r => r.id === requestId);
+    if (req && req.status === 'Aguardando Avaliação') {
+        const product = data.products.find(p => p.id === req.productId);
+        const refundPoints = Math.floor(product.points / 2);
+        data.requests = data.requests.filter(r => r.id !== requestId);
+        currentUser.currentPoints += refundPoints;
+        data.notifications.push({
+            id: data.notifications.length + 1,
+            userId: currentUser.id,
+            message: `Solicitação de ${product.name} cancelada. +${refundPoints} pontos reembolsados.`,
+            link: 'requested-products',
+            read: false,
+            createdAt: new Date().toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' })
+        });
+        await saveData();
+        updatePointsDisplay();
+        renderNotificationsDropdown();
+        showUserTab('requested-products');
+    }
 }
 
 function renderUserRanking(content) {
@@ -433,16 +591,41 @@ function renderUsersAdmin(content) {
             await saveData();
             renderUsersAdmin(content);
         } else {
-            alert('Usuário já existe.');
+            data.notifications.push({
+                id: data.notifications.length + 1,
+                userId: currentUser.id,
+                message: 'Usuário já existe.',
+                read: false,
+                createdAt: new Date().toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' })
+            });
+            await saveData();
+            renderNotificationsDropdown();
         }
     };
     content.appendChild(form);
 
-    const list = document.createElement('ul');
+    const table = document.createElement('table');
+    table.innerHTML = '<tr><th>Usuário</th><th>Tipo</th><th>Pontos Totais</th><th>Pontos Atuais</th><th>Ações</th></tr>';
     data.users.forEach(user => {
-        list.innerHTML += `<li>${user.username} - ${user.type}</li>`;
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td>${user.username}</td><td>${user.type}</td><td>${user.totalPoints}</td><td>${user.currentPoints}</td>`;
+        const td = document.createElement('td');
+        const editBtn = document.createElement('button');
+        editBtn.textContent = 'Editar';
+        editBtn.classList.add('edit-btn');
+        editBtn.onclick = () => editItem('user', user.id);
+        const deleteBtn = document.createElement('button');
+        deleteBtn.textContent = 'Excluir';
+        deleteBtn.classList.add('delete-btn');
+        deleteBtn.onclick = () => showModal(`Excluir usuário ${user.username}?`, () => {
+            deleteItem('user', user.id);
+            closeModal();
+        });
+        td.append(editBtn, deleteBtn);
+        tr.appendChild(td);
+        table.appendChild(tr);
     });
-    content.appendChild(list);
+    content.appendChild(table);
 }
 
 function renderTasksAdmin(content) {
@@ -472,28 +655,38 @@ function renderTasksAdmin(content) {
             userId: userId,
             message: `Nova tarefa: ${name} em ${day} por ${points} pontos.`,
             link: 'tasks',
+            read: false,
             createdAt: new Date().toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' })
         });
         await saveData();
+        renderNotificationsDropdown();
         renderTasksAdmin(content);
     };
     content.appendChild(form);
 
-    const list = document.createElement('ul');
+    const table = document.createElement('table');
+    table.innerHTML = '<tr><th>Tarefa</th><th>Pontos</th><th>Dia</th><th>Usuário</th><th>Concluída</th><th>Ações</th></tr>';
     data.tasks.forEach(task => {
         const user = data.users.find(u => u.id === task.userId);
-        const li = document.createElement('li');
-        li.textContent = `${task.name} - ${task.points} pts - ${task.day} - Usuário: ${user.username} - Completa: ${task.completed ? 'Sim' : 'Não'}`;
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td>${task.name}</td><td>${task.points}</td><td>${task.day}</td><td>${user.username}</td><td>${task.completed ? 'Sim' : 'Não'}</td>`;
+        const td = document.createElement('td');
         const editBtn = document.createElement('button');
         editBtn.textContent = 'Editar';
+        editBtn.classList.add('edit-btn');
         editBtn.onclick = () => editItem('task', task.id);
         const deleteBtn = document.createElement('button');
         deleteBtn.textContent = 'Excluir';
-        deleteBtn.onclick = () => deleteItem('task', task.id);
-        li.append(editBtn, deleteBtn);
-        list.appendChild(li);
+        deleteBtn.classList.add('delete-btn');
+        deleteBtn.onclick = () => showModal(`Excluir tarefa ${task.name}?`, () => {
+            deleteItem('task', task.id);
+            closeModal();
+        });
+        td.append(editBtn, deleteBtn);
+        tr.appendChild(td);
+        table.appendChild(tr);
     });
-    content.appendChild(list);
+    content.appendChild(table);
 }
 
 function renderProductsAdmin(content) {
@@ -517,28 +710,38 @@ function renderProductsAdmin(content) {
                 userId: user.id,
                 message: `Novo produto: ${name} por ${points} pontos.`,
                 link: 'products',
+                read: false,
                 createdAt: new Date().toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' })
             });
         });
         await saveData();
+        renderNotificationsDropdown();
         renderProductsAdmin(content);
     };
     content.appendChild(form);
 
-    const list = document.createElement('ul');
+    const table = document.createElement('table');
+    table.innerHTML = '<tr><th>Produto</th><th>Pontos</th><th>Ações</th></tr>';
     data.products.forEach(product => {
-        const li = document.createElement('li');
-        li.textContent = `${product.name} - ${product.points} pts`;
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td>${product.name}</td><td>${product.points}</td>`;
+        const td = document.createElement('td');
         const editBtn = document.createElement('button');
         editBtn.textContent = 'Editar';
+        editBtn.classList.add('edit-btn');
         editBtn.onclick = () => editItem('product', product.id);
         const deleteBtn = document.createElement('button');
         deleteBtn.textContent = 'Excluir';
-        deleteBtn.onclick = () => deleteItem('product', product.id);
-        li.append(editBtn, deleteBtn);
-        list.appendChild(li);
+        deleteBtn.classList.add('delete-btn');
+        deleteBtn.onclick = () => showModal(`Excluir produto ${product.name}?`, () => {
+            deleteItem('product', product.id);
+            closeModal();
+        });
+        td.append(editBtn, deleteBtn);
+        tr.appendChild(td);
+        table.appendChild(tr);
     });
-    content.appendChild(list);
+    content.appendChild(table);
 }
 
 function renderRequestsAdmin(content) {
@@ -549,27 +752,37 @@ function renderRequestsAdmin(content) {
     content.appendChild(filter);
 
     const statusFilter = filter.value === 'all' ? '' : filter.value;
-    const list = document.createElement('ul');
+    const table = document.createElement('table');
+    table.innerHTML = '<tr><th>Produto</th><th>Usuário</th><th>Status</th><th>Criado</th><th>Moderado</th><th>Justificativa</th><th>Ações</th></tr>';
     data.requests.filter(r => !statusFilter || r.status === statusFilter).forEach(req => {
         const product = data.products.find(p => p.id === req.productId);
         const user = data.users.find(u => u.id === req.userId);
-        const li = document.createElement('li');
+        const tr = document.createElement('tr');
         let iconClass = req.status === 'Aguardando Avaliação' ? 'fa-clock' : req.status === 'Aprovado' ? 'fa-check' : 'fa-times';
-        li.innerHTML = `<i class="fas ${iconClass} request-item"></i> ${product.name} - Usuário: ${user.username} - Status: ${req.status} - Criado: ${req.createdAt}`;
-        if (req.moderatedAt) li.innerHTML += `<br>Moderado: ${req.moderatedAt}`;
+        tr.innerHTML = `
+            <td><i class="fas ${iconClass} request-item"></i> ${product.name}</td>
+            <td>${user.username}</td>
+            <td>${req.status}</td>
+            <td>${req.createdAt}</td>
+            <td>${req.moderatedAt || '-'}</td>
+            <td>${req.justification || '-'}</td>
+        `;
+        const td = document.createElement('td');
         if (req.status === 'Aguardando Avaliação') {
             const approveBtn = document.createElement('button');
             approveBtn.textContent = 'Aprovar';
+            approveBtn.classList.add('approve-btn');
             approveBtn.onclick = () => approveRequest(req.id);
             const rejectBtn = document.createElement('button');
             rejectBtn.textContent = 'Rejeitar';
+            rejectBtn.classList.add('reject-btn');
             rejectBtn.onclick = () => showJustifyModal(req.id);
-            li.append(approveBtn, rejectBtn);
+            td.append(approveBtn, rejectBtn);
         }
-        if (req.justification) li.innerHTML += `<br>Justificativa: ${req.justification}`;
-        list.appendChild(li);
+        tr.appendChild(td);
+        table.appendChild(tr);
     });
-    content.appendChild(list);
+    content.appendChild(table);
 }
 
 async function approveRequest(id) {
@@ -586,6 +799,7 @@ async function approveRequest(id) {
             userId: req.userId,
             message: `Solicitação de ${product.name} aprovada.`,
             link: 'requested-products',
+            read: false,
             createdAt: new Date().toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' })
         });
         await saveData();
@@ -606,7 +820,18 @@ function closeJustifyModal() {
 
 async function confirmRejection() {
     const justify = document.getElementById('justify-text').value;
-    if (!justify) return alert('Justificativa obrigatória.');
+    if (!justify) {
+        data.notifications.push({
+            id: data.notifications.length + 1,
+            userId: currentUser.id,
+            message: 'Justificativa obrigatória.',
+            read: false,
+            createdAt: new Date().toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' })
+        });
+        await saveData();
+        renderNotificationsDropdown();
+        return;
+    }
     await fetchData();
     const req = data.requests.find(r => r.id === rejectionId);
     if (req) {
@@ -619,6 +844,7 @@ async function confirmRejection() {
             userId: req.userId,
             message: `Solicitação de ${product.name} rejeitada: ${justify}.`,
             link: 'requested-products',
+            read: false,
             createdAt: new Date().toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' })
         });
         await saveData();
@@ -659,10 +885,16 @@ function renderRankingsAdmin(content) {
 function editItem(type, id) {
     editId = id;
     editType = type;
-    const item = type === 'task' ? data.tasks.find(t => t.id === id) : data.products.find(p => p.id === id);
+    const item = type === 'user' ? data.users.find(u => u.id === id) : type === 'task' ? data.tasks.find(t => t.id === id) : data.products.find(p => p.id === id);
     const form = document.getElementById('edit-form');
     form.innerHTML = '';
-    if (type === 'task') {
+    if (type === 'user') {
+        form.innerHTML = `
+            <div class="form-group"><label>Username:</label><input type="text" id="edit-username" value="${item.username}" required></div>
+            <div class="form-group"><label>Senha:</label><input type="password" id="edit-password" placeholder="Nova senha (opcional)"></div>
+            <div class="form-group"><label>Tipo:</label><select id="edit-type"><option value="common" ${item.type === 'common' ? 'selected' : ''}>Comum</option><option value="admin" ${item.type === 'admin' ? 'selected' : ''}>Admin</option></select></div>
+        `;
+    } else if (type === 'task') {
         form.innerHTML = `
             <div class="form-group"><label>Nome:</label><input type="text" id="edit-task-name" value="${item.name}" required></div>
             <div class="form-group"><label>Pontos:</label><input type="number" id="edit-task-points" value="${item.points}" required></div>
@@ -688,7 +920,13 @@ function editItem(type, id) {
 
 async function saveEdit() {
     await fetchData();
-    if (editType === 'task') {
+    if (editType === 'user') {
+        const user = data.users.find(u => u.id === editId);
+        user.username = document.getElementById('edit-username').value;
+        const newPassword = document.getElementById('edit-password').value;
+        if (newPassword) user.passwordHash = await hashPassword(newPassword);
+        user.type = document.getElementById('edit-type').value;
+    } else if (editType === 'task') {
         const task = data.tasks.find(t => t.id === editId);
         task.name = document.getElementById('edit-task-name').value;
         task.points = parseInt(document.getElementById('edit-task-points').value);
@@ -710,7 +948,24 @@ function closeEditModal() {
 
 async function deleteItem(type, id) {
     await fetchData();
-    if (type === 'task') {
+    if (type === 'user') {
+        if (data.users.find(u => u.id === id).type === 'admin' && data.users.filter(u => u.type === 'admin').length === 1) {
+            data.notifications.push({
+                id: data.notifications.length + 1,
+                userId: currentUser.id,
+                message: 'Não é possível excluir o último admin.',
+                read: false,
+                createdAt: new Date().toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' })
+            });
+            await saveData();
+            renderNotificationsDropdown();
+            return;
+        }
+        data.users = data.users.filter(u => u.id !== id);
+        data.tasks = data.tasks.filter(t => t.userId !== id);
+        data.requests = data.requests.filter(r => r.userId !== id);
+        data.notifications = data.notifications.filter(n => n.userId !== id);
+    } else if (type === 'task') {
         data.tasks = data.tasks.filter(t => t.id !== id);
     } else {
         data.products = data.products.filter(p => p.id !== id);
